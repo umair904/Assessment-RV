@@ -28,7 +28,7 @@ export class MovieService {
 
     /**
      *  Below is the busniess logic that will grab a user form DB along with his/her selected Catagories
-     *  if exists, and then search for the movies from those categories to recommend the logged in user 
+     *  if exists, and then search for the top rated movies from those categories to recommend the logged in user 
      */
 
     async getRecommendedMoviesForUser(userId : string){
@@ -36,12 +36,41 @@ export class MovieService {
         if(!user){
             throw new Error('User not found');
         }
-        // Below code is used for fetching the objects ids from the objects to use them for searching using {$in}
-        let categoryIdsArray = user.categories.map((category) => (category as any)._id);
-        const movies = await this.movieModel
-        .find({ category: { $in: categoryIdsArray } })
-        .populate('category')
+        const recommendedMovies = await this.movieModel
+        .aggregate([
+          {
+            $match: {
+              'category': { $in: user.categories },
+            },
+          },
+          {
+            $lookup: {
+              from: 'ratings',
+              localField: '_id',
+              foreignField: 'movie',
+              as: 'ratings',
+            },
+          },
+          {
+            $project: {
+              name: 1,
+              category: 1,
+              averageRating: {
+                $avg: '$ratings.ratingValue',
+              },
+            },
+          },
+          {
+            $sort: {
+              averageRating: -1,
+            },
+          },
+          {
+            $limit: 10,
+          },
+        ])
         .exec();
-        return movies
+  
+        return recommendedMovies
     }
 }
